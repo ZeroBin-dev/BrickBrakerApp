@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.MotionEvent
@@ -20,21 +21,30 @@ import com.cyb.brickbraker.common.Constants
 /**
  * 벽돌깨기 메인 뷰
  */
-class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(context, attrs),
+class GameView(context: Context, private val stageNumber: Int, attrs: AttributeSet? = null, ) : SurfaceView(context, attrs),
     SurfaceHolder.Callback {
 
-    private val paddle = Paddle()
-    private val ball = Ball()
-    private val bricks = mutableListOf<Brick>()
-    private var isRunning = false
-    private var isGameOver = false
-    private var gameThread: Thread? = null
-    private var stage: Stage? = null
+    private val paddle = Paddle() // 패들
+    private val ball = Ball() // 볼
+    private val bricks = mutableListOf<Brick>() // 벽돌리스트
+    private var isRunning = false // 실행중
+    private var isGameOver = false // 게임종료
+    private var gameThread: Thread? = null // 쓰레드
+    private var stage: Stage? = null // 스테이지
+    private var currentStage = stageNumber // 현재 스테이지
+    private var remainingBlocks = 0 // 남는 블록 수
+    private var onStageUpdatedListener: ((Int, Int) -> Unit)? = null
+    private var onStageClearedListener: (() -> Unit)? = null
+    private val textPaint = Paint().apply {
+        color = Color.WHITE // 텍스트 색상
+        textSize = 50f // 텍스트 크기
+        style = Paint.Style.FILL // 채우기 스타일
+    }
 
     init {
         holder.addCallback(this)
         // 초기 벽돌 설정
-        setupBricks(1)
+        setupBricks(currentStage)
     }
 
     // 벽돌 설정
@@ -43,6 +53,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         stage = Stage(curStage)
         stage!!.setupBricks()
         bricks.addAll(stage!!.bricks) // 새로 생성된 벽돌 추가
+        remainingBlocks = stage!!.getTotal()
     }
 
     fun nextStage() {
@@ -66,6 +77,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                     checkCollisions()  // 충돌 감지
                     ball.update()  // 공의 위치 업데이트
                     canvas.drawColor(Color.BLACK)  // 배경 색상 설정
+
+                    // 현재 스테이지 및 남은 블록 수 그리기
+                    val textXPosition = Constants.screenWidth / 2 // 중앙 정렬 X 좌표
+                    val textYPosition = Constants.screenHeight * 2 / 3 // 화면 중앙 쪽 Y 좌표 (2/3 지점)
+
+                    // 텍스트를 그릴 때, 가운데 정렬을 위해 텍스트의 너비를 고려하여 X 위치 조정
+                    canvas.drawText(
+                        "Stage: $currentStage",
+                        textXPosition - textPaint.measureText("Stage: $currentStage") / 2,
+                        textYPosition.toFloat(),
+                        textPaint
+                    )
+                    canvas.drawText(
+                        "Remaining Blocks: $remainingBlocks",
+                        textXPosition - textPaint.measureText("Remaining Blocks: $remainingBlocks") / 2,
+                        textYPosition + 60f,
+                        textPaint
+                    )
+
+
                     paddle.draw(canvas)  // 패들 그리기
                     ball.draw(canvas)  // 공 그리기
                     bricks.forEach { it.draw(canvas) }  // 벽돌 그리기
@@ -113,6 +144,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
             // 추가 위치 조정 (패들에서 약간 떨어뜨리기)
             ball.rect.offset(0f, -ball.radius) // 공을 패들에서 약간 위로 이동
+
             return // 패들 충돌 처리 후 종료
         }
 
@@ -142,9 +174,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
         }
 
-        if (bricks.isEmpty()) {
-            nextStage() // 모든 벽돌이 파괴된 경우 다음 스테이지로 넘어감
+        remainingBlocks = bricks.size // 현재 남아 있는 블록 수
+
+        // 남은 블록 수가 0이 되면 스테이지 클리어 이벤트 호출
+        if (remainingBlocks == 0) {
+            onStageClearedListener?.invoke() // 스테이지 클리어 이벤트 호출
+            nextStage()
         }
+
+        updateStageInfo(currentStage, remainingBlocks)
     }
 
     // 게임 오버 처리
@@ -211,6 +249,20 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         paddle.resetPaddle()
 
         this.invalidate()  // 화면을 다시 그리기
+    }
+
+    fun setOnStageUpdatedListener(listener: (Int, Int) -> Unit) {
+        onStageUpdatedListener = listener
+    }
+
+    fun setOnStageClearedListener(listener: () -> Unit) {
+        onStageClearedListener = listener
+    }
+
+    fun updateStageInfo(stage: Int, blocks: Int) {
+        currentStage = stage
+        remainingBlocks = blocks
+        onStageUpdatedListener?.invoke(currentStage, remainingBlocks) // UI에 업데이트 알림
     }
 
     // 패들 움직이기
