@@ -24,6 +24,15 @@ class Paddle() {
         Constants.screenHeight - 150f + paddleHeight
     )
 
+    fun resetPaddle(){
+        rect.set(
+            (Constants.screenWidth / 2) - (paddleWidth / 2),
+            Constants.screenHeight - 150f,
+            (Constants.screenWidth / 2) + (paddleWidth / 2),
+            Constants.screenHeight - 150f + paddleHeight
+        )
+    }
+
     // 패들 이동 메서드
     fun moveTo(x: Float) {
         // 패들의 중심을 x 좌표로 이동

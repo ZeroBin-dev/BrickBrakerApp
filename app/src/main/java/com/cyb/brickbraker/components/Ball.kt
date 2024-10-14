@@ -16,7 +16,7 @@ class Ball {
         color = Color.RED
     }
 
-    val radius = 20f // 공의 크기
+    var radius = 20f // 공의 크기
     var speed = 10f // 공의 속도
     var dx = speed // x 방향 속도
     var dy = speed // y 방향 속도
@@ -28,6 +28,20 @@ class Ball {
         (Constants.screenWidth / 2) + radius,
         (Constants.screenHeight / 2) + radius
     )
+
+    fun resetBall(){
+        radius = 20f
+        speed = 10f
+        dx = speed
+        dy = speed
+
+        rect.set(
+            (Constants.screenWidth / 2) - radius,
+            (Constants.screenHeight / 2) - radius,
+            (Constants.screenWidth / 2) + radius,
+            (Constants.screenHeight / 2) + radius
+        )
+    }
 
     // 공 위치 업데이트
     fun update() {

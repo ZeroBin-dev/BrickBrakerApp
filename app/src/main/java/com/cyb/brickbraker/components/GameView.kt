@@ -1,7 +1,9 @@
 package com.cyb.brickbraker.components
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
 import android.util.AttributeSet
 import android.view.Gravity
@@ -12,9 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
-import androidx.compose.runtime.Composable
 import com.cyb.brickbraker.common.Constants
-import kotlin.concurrent.thread
 
 
 /**
@@ -28,45 +28,52 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private val bricks = mutableListOf<Brick>()
     private var isRunning = false
     private var isGameOver = false
+    private var gameThread: Thread? = null
+    private var stage: Stage? = null
 
     init {
         holder.addCallback(this)
         // 초기 벽돌 설정
-        setupBricks()
+        setupBricks(1)
     }
 
     // 벽돌 설정
-    private fun setupBricks() {
-        val totalRows = 5 // 생성할 블록의 총 줄 수
-        val totalColumns = 8 // 생성할 블록의 총 열 수
-        val brickWidth = 120f // 블록의 너비
-        val brickHeight = 50f // 블록의 높이
+    private fun setupBricks(curStage: Int) {
+        bricks.clear() // 이전 스테이지의 벽돌 삭제
+        stage = Stage(curStage)
+        stage!!.setupBricks()
+        bricks.addAll(stage!!.bricks) // 새로 생성된 벽돌 추가
+    }
 
-        // 중앙 정렬을 위한 계산
-        val totalBrickWidth = brickWidth * totalColumns + 20f * (totalColumns - 1) // 간격 추가
-        val startX = (Constants.screenWidth - totalBrickWidth) / 2 // 화면의 중앙에서 시작하는 x 좌표
+    fun nextStage() {
+        val nextStageNumber = (stage?.stageNumber ?: 1) + 1
 
-        for (i in 0 until totalRows) { // 0부터 totalRows - 1까지
-            for (j in 0 until totalColumns) { // 0부터 totalColumns - 1까지
-                val x = startX + j * (brickWidth + 20f) // 각 블록의 x 좌표 (20f 간격 추가)
-                val y = i * (brickHeight + 10f) // 각 블록의 y 좌표 (10f 간격 추가)
-                bricks.add(Brick(x, y))
-            }
+        if (nextStageNumber <= 3) {
+            setupBricks(nextStageNumber)  // 다음 스테이지로 변경
+            startGame()
+        } else {
+            println("모든 스테이지 클리어!")
         }
     }
 
     // 게임 진행
     private fun gameLoop() {
         while (isRunning) {
-            val canvas = holder.lockCanvas()
-            if (canvas != null) {
-                checkCollisions()  // 충돌 감지
-                ball.update()  // 공의 위치 업데이트
-                canvas.drawColor(Color.BLACK)  // 배경 색상 설정
-                paddle.draw(canvas)  // 패들 그리기
-                ball.draw(canvas)  // 공 그리기
-                bricks.forEach { it.draw(canvas) }  // 벽돌 그리기
-                holder.unlockCanvasAndPost(canvas)
+            var canvas: Canvas? = null
+            try {
+                canvas = holder.lockCanvas()
+                if (canvas != null) {
+                    checkCollisions()  // 충돌 감지
+                    ball.update()  // 공의 위치 업데이트
+                    canvas.drawColor(Color.BLACK)  // 배경 색상 설정
+                    paddle.draw(canvas)  // 패들 그리기
+                    ball.draw(canvas)  // 공 그리기
+                    bricks.forEach { it.draw(canvas) }  // 벽돌 그리기
+                }
+            } finally {
+                if (canvas != null) {
+                    holder.unlockCanvasAndPost(canvas)
+                }
             }
         }
     }
@@ -75,32 +82,27 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun checkCollisions() {
         // 1. 패들 충돌
         if (ball.rect.intersect(paddle.rect)) {
-            println("패들 충돌")
             val paddleWidth = paddle.rect.width()
             val hitPosition = (ball.rect.centerX() - paddle.rect.left) / paddleWidth
 
             // 패들 4등분
             when {
                 hitPosition < 0.25 -> { // 1/4 왼쪽
-                    println("0.25")
                     ball.reverseY() // Y축 반전
                     ball.dx = -Math.abs(ball.speed) // 왼쪽으로 이동
                 }
 
                 hitPosition < 0.5 -> { // 2/4 중앙 왼쪽
-                    println("0.5")
                     ball.reverseY() // Y축 반전
                     ball.dx = -ball.speed * 0.5f // 왼쪽으로 이동 (속도 감소)
                 }
 
                 hitPosition < 0.75 -> { // 3/4 중앙 오른쪽
-                    println("0.75")
                     ball.reverseY() // Y축 반전
                     ball.dx = ball.speed * 0.5f // 오른쪽으로 이동 (속도 감소)
                 }
 
                 else -> { // 4/4 오른쪽
-                    println("1")
                     ball.reverseY() // Y축 반전
                     ball.dx = Math.abs(ball.speed) // 오른쪽으로 이동
                 }
@@ -116,19 +118,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
         // 2. 벽(좌,우) 충돌
         else if (ball.rect.left <= 0 || ball.rect.right >= Constants.screenWidth) {
-            println("왼쪽 || 오른쪽 충돌")
             ball.reverseX() // X축 반전
         }
 
         // 3. 벽(위) 충돌
         else if (ball.rect.top <= 0) {
-            println("위쪽 충돌")
             ball.reverseY() // Y축 반전
         }
 
         // 4. 벽(아래) 충돌
         else if (ball.rect.bottom >= Constants.screenHeight) {
-            println("아래쪽 충돌")
             gameOver()
         } else {
             // 5. 벽돌 충돌
@@ -136,12 +135,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             while (iterator.hasNext()) {
                 val brick = iterator.next()
                 if (ball.rect.intersect(brick.rect)) {
-                    println("벽돌 충돌")
                     ball.reverseY() // 공의 Y축 방향 반전
                     iterator.remove() // 벽돌 제거
                     break
                 }
             }
+        }
+
+        if (bricks.isEmpty()) {
+            nextStage() // 모든 벽돌이 파괴된 경우 다음 스테이지로 넘어감
         }
     }
 
@@ -159,6 +161,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 setOnClickListener {
                     resetGame() // 재시작 메서드 호출
                     visibility = View.GONE // 버튼 숨기기
+                    startGame()
                 }
             }
 
@@ -190,29 +193,28 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
     }
 
-    fun resetGame() {
+    fun startGame() {
+        isRunning = true
+        gameThread = Thread {
+            gameLoop()
+        }
+        gameThread?.start()
+    }
+
+    private fun resetGame() {
         // 게임 재시작 시 초기 상태로 되돌림
         isGameOver = false
         isRunning = true
 
         // 공과 패들 위치 초기화
-        ball.rect.set(
-            (Constants.screenWidth / 2) - ball.radius,
-            (Constants.screenHeight / 2) - ball.radius,
-            (Constants.screenWidth / 2) + ball.radius,
-            (Constants.screenHeight / 2) + ball.radius
-        )
+        ball.resetBall()
+        paddle.resetPaddle()
 
-        // 공의 속도와 각도도 초기 상태로 설정
-        ball.speed = 10f
-        ball.dx = ball.speed
-        ball.dy = ball.speed
-
-        // 게임 루프 다시 시작 (필요한 경우)
-        gameLoop()
+        this.invalidate()  // 화면을 다시 그리기
     }
 
     // 패들 움직이기
+    @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         if (!isGameOver) { // 게임이 오버되지 않은 경우에만 패들 이동
             event?.let {
@@ -222,15 +224,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         return true
     }
 
+    // 시작
     override fun surfaceCreated(holder: SurfaceHolder) {
         isRunning = true
-        thread(start = true) {
-            gameLoop()
-        }
+        startGame()
     }
 
+    // 변경
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
+    // 끝
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         isRunning = false
     }
