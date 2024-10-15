@@ -21,7 +21,7 @@ import com.cyb.brickbraker.common.Constants
 /**
  * 벽돌깨기 메인 뷰
  */
-class GameView(context: Context, private val stageNumber: Int, attrs: AttributeSet? = null, ) : SurfaceView(context, attrs),
+class GameView(context: Context, stageNumber: Int, attrs: AttributeSet? = null, ) : SurfaceView(context, attrs),
     SurfaceHolder.Callback {
 
     private val paddle = Paddle() // 패들
